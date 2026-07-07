@@ -1,4 +1,6 @@
-# meridian
+<p align="center">
+  <img src="assets/logo.svg" alt="meridian" width="420"/>
+</p>
 
 The identity and discovery layer for multi-agent systems.
 

@@ -1,6 +1,7 @@
 package identity
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
@@ -103,4 +104,23 @@ func (u URI) WellKnownTrustURL() string {
 // with the given prefix (e.g. "/workflow" matches "/workflow/approval").
 func (u URI) MatchesCapabilityPrefix(prefix string) bool {
 	return strings.HasPrefix(u.CapabilityPath, strings.TrimRight(prefix, "/"))
+}
+
+// MarshalJSON serializes the URI as its canonical string form.
+func (u URI) MarshalJSON() ([]byte, error) {
+	return json.Marshal(u.String())
+}
+
+// UnmarshalJSON parses the URI from its canonical string form.
+func (u *URI) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	parsed, err := Parse(s)
+	if err != nil {
+		return err
+	}
+	*u = parsed
+	return nil
 }

@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <defs>
+    <!-- Clip content to the globe circle -->
+    <clipPath id="globe">
+      <circle cx="60" cy="60" r="50"/>
+    </clipPath>
+
+    <!-- Glow: pure blur pass, composited below the sharp layer -->
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="3"/>
+    </filter>
+
+    <!-- Subtle radial gradient: lighter at upper-left to suggest depth -->
+    <radialGradient id="fill" cx="42%" cy="35%" r="65%">
+      <stop offset="0%"   stop-color="#0f2846"/>
+      <stop offset="100%" stop-color="#060c18"/>
+    </radialGradient>
+  </defs>
+
+  <!-- ── Backgrounds ────────────────────────────────────────────── -->
+  <!-- Outer dark halo (bleeds past globe edge for a soft boundary) -->
+  <circle cx="60" cy="60" r="59" fill="#060c18"/>
+  <!-- Globe face -->
+  <circle cx="60" cy="60" r="50" fill="url(#fill)"/>
+
+  <!-- ── Globe wireframe grid ───────────────────────────────────── -->
+  <!-- Equator -->
+  <line x1="10" y1="60" x2="110" y2="60"
+        stroke="#1e3a5f" stroke-width="1" clip-path="url(#globe)"/>
+  <!-- Upper latitude ~30° N -->
+  <path d="M 15,39 Q 60,42 105,39"
+        fill="none" stroke="#1e3a5f" stroke-width="1" clip-path="url(#globe)"/>
+  <!-- Lower latitude ~30° S -->
+  <path d="M 15,81 Q 60,78 105,81"
+        fill="none" stroke="#1e3a5f" stroke-width="1" clip-path="url(#globe)"/>
+  <!-- Left meridian (~60° W) -->
+  <path d="M 60,10 C 25,30 25,90 60,110"
+        fill="none" stroke="#1e3a5f" stroke-width="1" clip-path="url(#globe)"/>
+  <!-- Right meridian (~60° E) -->
+  <path d="M 60,10 C 95,30 95,90 60,110"
+        fill="none" stroke="#1e3a5f" stroke-width="1" clip-path="url(#globe)"/>
+
+  <!-- ── Prime meridian — glow pass (blurred, semi-transparent) ── -->
+  <g filter="url(#glow)">
+    <line x1="60" y1="10" x2="60" y2="110"
+          stroke="#38bdf8" stroke-width="4" opacity="0.55" clip-path="url(#globe)"/>
+    <!-- Node halos on the meridian -->
+    <circle cx="60" cy="10"  r="6" fill="#38bdf8" opacity="0.5"/>
+    <circle cx="60" cy="39"  r="6" fill="#38bdf8" opacity="0.5"/>
+    <circle cx="60" cy="60"  r="8" fill="#38bdf8" opacity="0.5"/>
+    <circle cx="60" cy="81"  r="6" fill="#38bdf8" opacity="0.5"/>
+    <circle cx="60" cy="110" r="6" fill="#38bdf8" opacity="0.5"/>
+  </g>
+
+  <!-- ── Prime meridian — sharp pass ────────────────────────────── -->
+  <line x1="60" y1="10" x2="60" y2="110"
+        stroke="#38bdf8" stroke-width="1.5" clip-path="url(#globe)"/>
+
+  <!-- ── Off-meridian agent nodes ───────────────────────────────── -->
+  <!-- Equator intersections with side meridians -->
+  <circle cx="34" cy="60" r="2.5" fill="#2563eb"/>
+  <circle cx="86" cy="60" r="2.5" fill="#2563eb"/>
+  <!-- Upper-latitude intersections -->
+  <circle cx="41" cy="39" r="2"   fill="#2563eb"/>
+  <circle cx="79" cy="39" r="2"   fill="#2563eb"/>
+  <!-- Lower-latitude intersections -->
+  <circle cx="41" cy="81" r="2"   fill="#2563eb"/>
+  <circle cx="79" cy="81" r="2"   fill="#2563eb"/>
+
+  <!-- ── Prime-meridian agent nodes (sharp, on top of glow) ──────── -->
+  <circle cx="60" cy="10"  r="3"   fill="#38bdf8"/>
+  <circle cx="60" cy="39"  r="3"   fill="#38bdf8"/>
+  <circle cx="60" cy="60"  r="4.5" fill="#38bdf8"/>
+  <circle cx="60" cy="81"  r="3"   fill="#38bdf8"/>
+  <circle cx="60" cy="110" r="3"   fill="#38bdf8"/>
+
+  <!-- ── Outer ring ─────────────────────────────────────────────── -->
+  <circle cx="60" cy="60" r="50" fill="none" stroke="#1e3a5f" stroke-width="1.5"/>
+  <!-- Subtle specular highlight arc at the upper rim -->
+  <path d="M 22,28 A 50,50 0 0 1 98,28"
+        fill="none" stroke="white" stroke-width="0.5" opacity="0.08" clip-path="url(#globe)"/>
+</svg>
