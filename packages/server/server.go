@@ -50,12 +50,15 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) routes() {
+	s.engine.GET("/", s.handleDashboard)
+
 	v1 := s.engine.Group("/v1")
 	v1.POST("/agents", s.handleRegister)
 	v1.GET("/agents", s.handleGet)
 	v1.PATCH("/agents", s.handleUpdate)
 	v1.DELETE("/agents", s.handleDeregister)
 	v1.GET("/discover", s.handleDiscover)
+
 	s.engine.GET("/.well-known/agent-trust", s.handleTrustRoot)
 }
 
