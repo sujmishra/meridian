@@ -2,6 +2,13 @@
   <img src="assets/logo.svg" alt="meridian" width="420"/>
 </p>
 
+<p align="center">
+  <a href="https://github.com/sujmishra/meridian/actions/workflows/ci.yml"><img src="https://github.com/sujmishra/meridian/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/sujmishra/meridian/actions/workflows/ci.yml"><img src="https://github.com/sujmishra/meridian/actions/workflows/ci.yml/badge.svg?event=push&label=tests" alt="Tests"></a>
+  <a href="https://arxiv.org/abs/2510.08263"><img src="https://img.shields.io/badge/arXiv-2510.08263-b31b1b.svg" alt="arXiv Co-TAP"></a>
+  <a href="https://arxiv.org/abs/2601.14567"><img src="https://img.shields.io/badge/arXiv-2601.14567-b31b1b.svg" alt="arXiv Agent Identity URI"></a>
+</p>
+
 The identity and discovery layer for multi-agent systems.
 
 Meridian is a **Unified Agent Registry (UAR)** — infrastructure that enables AI agents to
@@ -51,9 +58,9 @@ make build && make run
 
 Meridian synthesizes two research contributions:
 
-- **Co-TAP** ([arXiv:2510.08263](https://arxiv.org/abs/2510.08263)) — three-layer agent
+- **Co-TAP** [![arXiv](https://img.shields.io/badge/arXiv-2510.08263-b31b1b.svg)](https://arxiv.org/abs/2510.08263) — three-layer agent
   interaction protocol (HAI / UAP / MEK) and multi-protocol service registry
-- **Agent Identity URI Scheme** ([arXiv:2601.14567](https://arxiv.org/abs/2601.14567)) —
+- **Agent Identity URI Scheme** [![arXiv](https://img.shields.io/badge/arXiv-2601.14567-b31b1b.svg)](https://arxiv.org/abs/2601.14567) —
   `agent://` URI scheme decoupling agent identity from network topology
 
 ## License
