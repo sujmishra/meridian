@@ -4,7 +4,8 @@
 
 <p align="center">
   <a href="https://github.com/sujmishra/meridian/actions/workflows/ci.yml"><img src="https://github.com/sujmishra/meridian/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/sujmishra/meridian/actions/workflows/ci.yml"><img src="https://github.com/sujmishra/meridian/actions/workflows/ci.yml/badge.svg?event=push&label=tests" alt="Tests"></a>
+  <a href="https://github.com/sujmishra/meridian/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/sujmishra/meridian/ci.yml?job=Test&label=tests&logo=go" alt="Tests"></a>
+  <a href="https://codecov.io/gh/sujmishra/meridian"><img src="https://codecov.io/gh/sujmishra/meridian/graph/badge.svg" alt="Coverage"></a>
   <a href="https://arxiv.org/abs/2510.08263"><img src="https://img.shields.io/badge/arXiv-2510.08263-b31b1b.svg" alt="arXiv Co-TAP"></a>
   <a href="https://arxiv.org/abs/2601.14567"><img src="https://img.shields.io/badge/arXiv-2601.14567-b31b1b.svg" alt="arXiv Agent Identity URI"></a>
 </p>
