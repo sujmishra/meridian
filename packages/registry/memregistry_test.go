@@ -2,7 +2,10 @@ package registry_test
 
 import (
 	"context"
+	"errors"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/sujmishra/meridian/packages/identity"
 	"github.com/sujmishra/meridian/packages/registry"
@@ -16,7 +19,36 @@ const (
 
 func newReg(t *testing.T) registry.Registry {
 	t.Helper()
-	return registry.NewMemRegistry(registry.NewMemStore(), nil)
+	return registry.NewMemRegistry(registry.NewMemStore(), nil, nil)
+}
+
+// stubDHT records DHT calls for assertion in unit tests.
+type stubDHT struct {
+	mu         sync.Mutex
+	puts       []identity.URI
+	deletes    []identity.URI
+	findResult []identity.URI
+	findErr    error
+}
+
+func (d *stubDHT) Put(_ context.Context, uri identity.URI, _ map[registry.Protocol]string, _ time.Duration) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.puts = append(d.puts, uri)
+	return nil
+}
+
+func (d *stubDHT) Delete(_ context.Context, uri identity.URI) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.deletes = append(d.deletes, uri)
+	return nil
+}
+
+func (d *stubDHT) FindCapability(_ context.Context, _ string) ([]identity.URI, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.findResult, d.findErr
 }
 
 func mustParseURI(t *testing.T, raw string) identity.URI {
@@ -303,5 +335,237 @@ func TestDiscover_EmptyResult(t *testing.T) {
 	}
 	if len(results) != 0 {
 		t.Errorf("Discover unknown prefix: got %d results, want 0", len(results))
+	}
+}
+
+// --- DHT wiring tests ---
+
+func TestRegister_PopulatesDHT(t *testing.T) {
+	stub := &stubDHT{}
+	reg := registry.NewMemRegistry(registry.NewMemStore(), nil, stub)
+	uri := mustParseURI(t, testURI1)
+
+	if err := reg.Register(context.Background(), makeRecord(t, testURI1)); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+
+	stub.mu.Lock()
+	puts := stub.puts
+	stub.mu.Unlock()
+	if len(puts) != 1 || puts[0] != uri {
+		t.Errorf("DHT.Put calls = %v, want [%v]", puts, uri)
+	}
+}
+
+func TestDeregister_RemovesFromDHT(t *testing.T) {
+	stub := &stubDHT{}
+	reg := registry.NewMemRegistry(registry.NewMemStore(), nil, stub)
+	uri := mustParseURI(t, testURI1)
+
+	_ = reg.Register(context.Background(), makeRecord(t, testURI1))
+	if err := reg.Deregister(context.Background(), uri); err != nil {
+		t.Fatalf("Deregister: %v", err)
+	}
+
+	stub.mu.Lock()
+	deletes := stub.deletes
+	stub.mu.Unlock()
+	if len(deletes) != 1 || deletes[0] != uri {
+		t.Errorf("DHT.Delete calls = %v, want [%v]", deletes, uri)
+	}
+}
+
+func TestUpdate_EndpointChange_RefreshesDHT(t *testing.T) {
+	stub := &stubDHT{}
+	reg := registry.NewMemRegistry(registry.NewMemStore(), nil, stub)
+	uri := mustParseURI(t, testURI1)
+
+	_ = reg.Register(context.Background(), makeRecord(t, testURI1))
+	patch := registry.RecordPatch{
+		Endpoints: map[registry.Protocol]string{registry.ProtocolA2A: "https://new.acme.com/a2a"},
+	}
+	if err := reg.Update(context.Background(), uri, patch); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+
+	stub.mu.Lock()
+	putCount := len(stub.puts)
+	stub.mu.Unlock()
+	if putCount != 2 { // once for Register, once for Update
+		t.Errorf("DHT.Put called %d times, want 2 (register + endpoint update)", putCount)
+	}
+}
+
+func TestUpdate_HealthOnly_DoesNotTouchDHT(t *testing.T) {
+	stub := &stubDHT{}
+	reg := registry.NewMemRegistry(registry.NewMemStore(), nil, stub)
+	uri := mustParseURI(t, testURI1)
+
+	_ = reg.Register(context.Background(), makeRecord(t, testURI1))
+	if err := reg.Update(context.Background(), uri, registry.RecordPatch{Health: registry.HealthHealthy}); err != nil {
+		t.Fatalf("Update health: %v", err)
+	}
+
+	stub.mu.Lock()
+	putCount := len(stub.puts)
+	stub.mu.Unlock()
+	if putCount != 1 { // only from Register, not from health update
+		t.Errorf("DHT.Put called %d times after health-only update, want 1", putCount)
+	}
+}
+
+// --- Two-level discovery tests ---
+
+func TestDiscover_TwoLevel_UsesDHT(t *testing.T) {
+	stub := &stubDHT{}
+	reg := registry.NewMemRegistry(registry.NewMemStore(), nil, stub)
+	ctx := context.Background()
+
+	for _, raw := range []string{testURI1, testURI2, testURI3} {
+		if err := reg.Register(ctx, makeRecord(t, raw)); err != nil {
+			t.Fatalf("Register %s: %v", raw, err)
+		}
+	}
+	// Stub FindCapability to return only the two /workflow agents.
+	uri1, uri2 := mustParseURI(t, testURI1), mustParseURI(t, testURI2)
+	stub.mu.Lock()
+	stub.findResult = []identity.URI{uri1, uri2}
+	stub.mu.Unlock()
+
+	results, err := reg.Discover(ctx, registry.Query{CapabilityPrefix: "/workflow"})
+	if err != nil {
+		t.Fatalf("Discover: %v", err)
+	}
+	if len(results) != 2 {
+		t.Errorf("Discover via DHT: got %d results, want 2", len(results))
+	}
+}
+
+func TestDiscover_DHT_Error_FallsBackToStore(t *testing.T) {
+	stub := &stubDHT{findErr: errors.New("network timeout")}
+	reg := registry.NewMemRegistry(registry.NewMemStore(), nil, stub)
+	ctx := context.Background()
+
+	for _, raw := range []string{testURI1, testURI2, testURI3} {
+		if err := reg.Register(ctx, makeRecord(t, raw)); err != nil {
+			t.Fatalf("Register %s: %v", raw, err)
+		}
+	}
+	// DHT fails → should fall back to store.List and still return the /workflow agents.
+	results, err := reg.Discover(ctx, registry.Query{CapabilityPrefix: "/workflow"})
+	if err != nil {
+		t.Fatalf("Discover: %v", err)
+	}
+	if len(results) != 2 {
+		t.Errorf("Discover (store fallback): got %d results, want 2", len(results))
+	}
+}
+
+// --- Attestation enforcement tests ---
+
+func newRegWithVerifier(t *testing.T, trustRoot string) (*registry.MemRegistry, *identity.PASETOSigner) {
+	t.Helper()
+	signer, err := identity.GeneratePASETOSigner(trustRoot)
+	if err != nil {
+		t.Fatalf("GeneratePASETOSigner: %v", err)
+	}
+	verifier := identity.NewPASETOVerifier(nil)
+	verifier.AddKey(trustRoot, signer.PublicKey())
+	return registry.NewMemRegistry(registry.NewMemStore(), verifier, nil), signer
+}
+
+func signToken(t *testing.T, signer *identity.PASETOSigner, uri identity.URI) string {
+	t.Helper()
+	att, err := signer.Sign(context.Background(), uri, uri.CapabilityPath, time.Hour)
+	if err != nil {
+		t.Fatalf("Sign: %v", err)
+	}
+	return att.Token
+}
+
+func TestRegister_Verifier_RequiresAttestation(t *testing.T) {
+	reg, _ := newRegWithVerifier(t, "acme.com")
+
+	rec := makeRecord(t, testURI1) // no Attestation field
+	if err := reg.Register(context.Background(), rec); err != registry.ErrAttestationFail {
+		t.Errorf("Register without attestation: got %v, want ErrAttestationFail", err)
+	}
+}
+
+func TestRegister_Verifier_RejectsInvalidAttestation(t *testing.T) {
+	reg, _ := newRegWithVerifier(t, "acme.com")
+
+	rec := makeRecord(t, testURI1)
+	rec.Attestation = "v4.public.notavalidtoken"
+	if err := reg.Register(context.Background(), rec); err != registry.ErrAttestationFail {
+		t.Errorf("Register with bad token: got %v, want ErrAttestationFail", err)
+	}
+}
+
+func TestRegister_Verifier_AcceptsValidAttestation(t *testing.T) {
+	reg, signer := newRegWithVerifier(t, "acme.com")
+	uri := mustParseURI(t, testURI1)
+
+	rec := makeRecord(t, testURI1)
+	rec.Attestation = signToken(t, signer, uri)
+	if err := reg.Register(context.Background(), rec); err != nil {
+		t.Errorf("Register with valid attestation: %v", err)
+	}
+}
+
+func TestUpdate_Verifier_EndpointChange_RequiresAttestation(t *testing.T) {
+	reg, signer := newRegWithVerifier(t, "acme.com")
+	ctx := context.Background()
+
+	uri := mustParseURI(t, testURI1)
+	rec := makeRecord(t, testURI1)
+	rec.Attestation = signToken(t, signer, uri)
+	if err := reg.Register(ctx, rec); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+
+	patch := registry.RecordPatch{
+		Endpoints: map[registry.Protocol]string{registry.ProtocolA2A: "https://new.acme.com/a2a"},
+		// no Attestation
+	}
+	if err := reg.Update(ctx, uri, patch); err != registry.ErrAttestationFail {
+		t.Errorf("Update endpoints without attestation: got %v, want ErrAttestationFail", err)
+	}
+}
+
+func TestUpdate_Verifier_EndpointChange_AcceptsAttestation(t *testing.T) {
+	reg, signer := newRegWithVerifier(t, "acme.com")
+	ctx := context.Background()
+
+	uri := mustParseURI(t, testURI1)
+	rec := makeRecord(t, testURI1)
+	rec.Attestation = signToken(t, signer, uri)
+	if err := reg.Register(ctx, rec); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+
+	patch := registry.RecordPatch{
+		Endpoints:   map[registry.Protocol]string{registry.ProtocolA2A: "https://new.acme.com/a2a"},
+		Attestation: signToken(t, signer, uri),
+	}
+	if err := reg.Update(ctx, uri, patch); err != nil {
+		t.Errorf("Update endpoints with valid attestation: %v", err)
+	}
+}
+
+func TestUpdate_Verifier_HealthOnly_NoAttestationRequired(t *testing.T) {
+	reg, signer := newRegWithVerifier(t, "acme.com")
+	ctx := context.Background()
+
+	uri := mustParseURI(t, testURI1)
+	rec := makeRecord(t, testURI1)
+	rec.Attestation = signToken(t, signer, uri)
+	if err := reg.Register(ctx, rec); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+
+	// Health-only update must succeed without attestation.
+	if err := reg.Update(ctx, uri, registry.RecordPatch{Health: registry.HealthHealthy}); err != nil {
+		t.Errorf("Update health without attestation: %v", err)
 	}
 }

@@ -22,6 +22,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/sujmishra/meridian/packages/dht"
 	"github.com/sujmishra/meridian/packages/identity"
 	"github.com/sujmishra/meridian/packages/registry"
 	"github.com/sujmishra/meridian/packages/server"
@@ -45,7 +46,8 @@ func main() {
 	verifier.AddKey(*trustRoot, signer.PublicKey())
 
 	store := registry.NewMemStore()
-	reg := registry.NewMemRegistry(store, verifier)
+	dhtNode := dht.NewMemNode()
+	reg := registry.NewMemRegistry(store, verifier, dhtNode)
 
 	srv := server.New(reg, *trustRoot, signer)
 

@@ -28,7 +28,7 @@ const (
 
 func newTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	reg := registry.NewMemRegistry(registry.NewMemStore(), nil)
+	reg := registry.NewMemRegistry(registry.NewMemStore(), nil, nil)
 	srv := server.New(reg, testTrustRoot, nil)
 	return httptest.NewServer(srv)
 }
