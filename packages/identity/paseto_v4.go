@@ -139,6 +139,14 @@ func (v *PASETOVerifier) AddKey(trustRoot string, key ed25519.PublicKey) {
 	v.keys[trustRoot] = key
 }
 
+// HasKey reports whether a public key is registered for the given trust root.
+func (v *PASETOVerifier) HasKey(trustRoot string) bool {
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+	_, ok := v.keys[trustRoot]
+	return ok
+}
+
 // Verify validates a PASETO v4.public token and returns the decoded Attestation.
 func (v *PASETOVerifier) Verify(_ context.Context, token string, trustRoot string) (Attestation, error) {
 	v.mu.RLock()

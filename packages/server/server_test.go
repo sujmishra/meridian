@@ -7,12 +7,19 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"testing"
 
+	"github.com/gin-gonic/gin"
 	"github.com/sujmishra/meridian/packages/identity"
 	"github.com/sujmishra/meridian/packages/registry"
 	"github.com/sujmishra/meridian/packages/server"
 )
+
+func TestMain(m *testing.M) {
+	gin.SetMode(gin.TestMode)
+	os.Exit(m.Run())
+}
 
 const (
 	testAgentURI = "agent://acme.com/workflow/approval/agent_01h455vb4pex5vsknk084sn02q"

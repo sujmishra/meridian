@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/gin-gonic/gin"
 	"github.com/sujmishra/meridian/packages/identity"
 	"github.com/sujmishra/meridian/packages/registry"
 )
@@ -26,7 +27,7 @@ type Server struct {
 	reg       registry.Registry
 	trustRoot string
 	signer    identity.Signer // may be nil in dev mode
-	mux       *http.ServeMux
+	engine    *gin.Engine
 }
 
 // New constructs a Server wired to the given registry.
@@ -37,23 +38,25 @@ func New(reg registry.Registry, trustRoot string, signer identity.Signer) *Serve
 		reg:       reg,
 		trustRoot: trustRoot,
 		signer:    signer,
-		mux:       http.NewServeMux(),
+		engine:    gin.New(),
 	}
+	s.engine.Use(gin.Recovery())
 	s.routes()
 	return s
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	s.mux.ServeHTTP(w, r)
+	s.engine.ServeHTTP(w, r)
 }
 
 func (s *Server) routes() {
-	s.mux.HandleFunc("POST /v1/agents", s.handleRegister)
-	s.mux.HandleFunc("GET /v1/agents", s.handleGet)
-	s.mux.HandleFunc("PATCH /v1/agents", s.handleUpdate)
-	s.mux.HandleFunc("DELETE /v1/agents", s.handleDeregister)
-	s.mux.HandleFunc("GET /v1/discover", s.handleDiscover)
-	s.mux.HandleFunc("GET /.well-known/agent-trust", s.handleTrustRoot)
+	v1 := s.engine.Group("/v1")
+	v1.POST("/agents", s.handleRegister)
+	v1.GET("/agents", s.handleGet)
+	v1.PATCH("/agents", s.handleUpdate)
+	v1.DELETE("/agents", s.handleDeregister)
+	v1.GET("/discover", s.handleDiscover)
+	s.engine.GET("/.well-known/agent-trust", s.handleTrustRoot)
 }
 
 // registerRequest is the JSON body for POST /v1/agents.
@@ -64,15 +67,15 @@ type registerRequest struct {
 	Attestation string                       `json:"attestation,omitempty"`
 }
 
-func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleRegister(c *gin.Context) {
 	var req registerRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body: " + err.Error()})
 		return
 	}
 	uri, err := identity.Parse(req.AgentURI)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid agent_uri: "+err.Error())
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid agent_uri: " + err.Error()})
 		return
 	}
 	record := registry.Record{
@@ -83,39 +86,39 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		Endpoints:      req.Endpoints,
 		Attestation:    req.Attestation,
 	}
-	if err := s.reg.Register(r.Context(), record); err != nil {
+	if err := s.reg.Register(c.Request.Context(), record); err != nil {
 		switch err {
 		case registry.ErrAlreadyExists:
-			writeError(w, http.StatusConflict, err.Error())
+			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 		case registry.ErrInvalidRecord:
-			writeError(w, http.StatusUnprocessableEntity, err.Error())
+			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
 		case registry.ErrAttestationFail:
-			writeError(w, http.StatusForbidden, err.Error())
+			c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
 		default:
 			slog.Error("register failed", "err", err)
-			writeError(w, http.StatusInternalServerError, "internal server error")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
 		}
 		return
 	}
-	registered, _ := s.reg.Get(r.Context(), uri)
-	writeJSON(w, http.StatusCreated, registered)
+	registered, _ := s.reg.Get(c.Request.Context(), uri)
+	c.JSON(http.StatusCreated, registered)
 }
 
-func (s *Server) handleGet(w http.ResponseWriter, r *http.Request) {
-	uri, err := uriQueryParam(r)
+func (s *Server) handleGet(c *gin.Context) {
+	uri, err := uriQueryParam(c)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	record, err := s.reg.Get(r.Context(), uri)
+	record, err := s.reg.Get(c.Request.Context(), uri)
 	if err == registry.ErrNotFound {
-		writeError(w, http.StatusNotFound, err.Error())
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	} else if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal server error")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
 		return
 	}
-	writeJSON(w, http.StatusOK, record)
+	c.JSON(http.StatusOK, record)
 }
 
 // updateRequest is the JSON body for PATCH /v1/agents.
@@ -125,15 +128,15 @@ type updateRequest struct {
 	Attestation string                       `json:"attestation,omitempty"`
 }
 
-func (s *Server) handleUpdate(w http.ResponseWriter, r *http.Request) {
-	uri, err := uriQueryParam(r)
+func (s *Server) handleUpdate(c *gin.Context) {
+	uri, err := uriQueryParam(c)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 	var req updateRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body: " + err.Error()})
 		return
 	}
 	patch := registry.RecordPatch{
@@ -141,50 +144,49 @@ func (s *Server) handleUpdate(w http.ResponseWriter, r *http.Request) {
 		Health:      req.Health,
 		Attestation: req.Attestation,
 	}
-	if err := s.reg.Update(r.Context(), uri, patch); err != nil {
+	if err := s.reg.Update(c.Request.Context(), uri, patch); err != nil {
 		switch err {
 		case registry.ErrNotFound:
-			writeError(w, http.StatusNotFound, err.Error())
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		case registry.ErrAttestationFail:
-			writeError(w, http.StatusForbidden, err.Error())
+			c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
 		default:
-			writeError(w, http.StatusInternalServerError, "internal server error")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
 		}
 		return
 	}
-	updated, _ := s.reg.Get(r.Context(), uri)
-	writeJSON(w, http.StatusOK, updated)
+	updated, _ := s.reg.Get(c.Request.Context(), uri)
+	c.JSON(http.StatusOK, updated)
 }
 
-func (s *Server) handleDeregister(w http.ResponseWriter, r *http.Request) {
-	uri, err := uriQueryParam(r)
+func (s *Server) handleDeregister(c *gin.Context) {
+	uri, err := uriQueryParam(c)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	if err := s.reg.Deregister(r.Context(), uri); err == registry.ErrNotFound {
-		writeError(w, http.StatusNotFound, err.Error())
+	if err := s.reg.Deregister(c.Request.Context(), uri); err == registry.ErrNotFound {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	} else if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal server error")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+	c.Status(http.StatusNoContent)
 }
 
-func (s *Server) handleDiscover(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
+func (s *Server) handleDiscover(c *gin.Context) {
 	query := registry.Query{
-		CapabilityPrefix: q.Get("capability"),
-		Health:           registry.HealthStatus(q.Get("health")),
+		CapabilityPrefix: c.Query("capability"),
+		Health:           registry.HealthStatus(c.Query("health")),
 	}
-	if proto := q.Get("protocol"); proto != "" {
+	if proto := c.Query("protocol"); proto != "" {
 		query.Protocols = []registry.Protocol{registry.Protocol(proto)}
 	}
-	if tr := q.Get("trust_root"); tr != "" {
+	if tr := c.Query("trust_root"); tr != "" {
 		query.TrustRoots = []string{tr}
 	}
-	if l := q.Get("limit"); l != "" {
+	if l := c.Query("limit"); l != "" {
 		if n, err := strconv.Atoi(l); err == nil && n > 0 {
 			query.Limit = n
 		}
@@ -192,15 +194,15 @@ func (s *Server) handleDiscover(w http.ResponseWriter, r *http.Request) {
 	if query.CapabilityPrefix == "" {
 		query.CapabilityPrefix = "/"
 	}
-	results, err := s.reg.Discover(r.Context(), query)
+	results, err := s.reg.Discover(c.Request.Context(), query)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal server error")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
 		return
 	}
 	if results == nil {
 		results = []registry.Record{}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
+	c.JSON(http.StatusOK, gin.H{
 		"agents": results,
 		"count":  len(results),
 	})
@@ -216,7 +218,7 @@ type trustRootResponse struct {
 	PublicKey json.RawMessage `json:"public_key,omitempty"` // JWK, present for PASETO signers
 }
 
-func (s *Server) handleTrustRoot(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleTrustRoot(c *gin.Context) {
 	resp := trustRootResponse{
 		TrustRoot: s.trustRoot,
 		Algorithm: "hmac-sha256",
@@ -227,24 +229,14 @@ func (s *Server) handleTrustRoot(w http.ResponseWriter, r *http.Request) {
 			resp.PublicKey = json.RawMessage(jwk)
 		}
 	}
-	writeJSON(w, http.StatusOK, resp)
+	c.JSON(http.StatusOK, resp)
 }
 
 // uriQueryParam reads and parses the "uri" query parameter as an agent:// URI.
-func uriQueryParam(r *http.Request) (identity.URI, error) {
-	raw := r.URL.Query().Get("uri")
+func uriQueryParam(c *gin.Context) (identity.URI, error) {
+	raw := c.Query("uri")
 	if raw == "" {
 		return identity.URI{}, fmt.Errorf("missing required query parameter 'uri'")
 	}
 	return identity.Parse(raw)
-}
-
-func writeJSON(w http.ResponseWriter, code int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(code)
-	_ = json.NewEncoder(w).Encode(v)
-}
-
-func writeError(w http.ResponseWriter, code int, msg string) {
-	writeJSON(w, code, map[string]string{"error": msg})
 }
