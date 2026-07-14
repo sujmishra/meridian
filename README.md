@@ -27,11 +27,11 @@ its current address**, and **verifiable without a central authority**.
 ## Architecture
 
 ```
-Layer 4 ── MEK         Memory → Extraction → Knowledge sharing
-Layer 3 ── HAI         SSE streaming, lifecycle control
-Layer 2 ── Gateway     Protocol bridge: MCP ↔ A2A ↔ ACP ↔ REST
-Layer 1 ── Registry    Capability index, health, governance
 Layer 0 ── Identity    agent:// URI · DHT resolution · PASETO attestation
+Layer 1 ── Registry    Capability index, health, governance
+Layer 2 ── Gateway     Protocol bridge: MCP ↔ A2A ↔ ACP ↔ REST
+Layer 3 ── HAI         SSE streaming, lifecycle control
+Layer 4 ── MEK         Memory → Extraction → Knowledge sharing
 ```
 
 See [docs/architecture.md](docs/architecture.md) for the full design.
